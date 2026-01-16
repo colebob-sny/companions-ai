@@ -6,7 +6,7 @@
     "platforms": ["ios", "android", "web"],
     "sdkVersion": "48.0.0",
     "extra": {
-      "apiUrl": "http://100.83.56.76:3000"
+      "apiUrl": "http://localhost:3000"
     }
   }
 }
