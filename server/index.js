@@ -1,3 +1,13 @@
+// Load local .env in development (safe; actual secret files should be ignored)
+require('dotenv').config();
+
+// Fail fast if OpenAI key is missing
+if (!process.env.OPENAI_API_KEY) {
+  console.error('ERROR: Missing OPENAI_API_KEY in environment. Set it in server/.env or via environment variables.');
+  // Exit with non-zero so deployments fail early
+  process.exit(1);
+}
+
 const express = require('express');
 const cors = require('cors');
 
