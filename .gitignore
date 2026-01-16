@@ -29,3 +29,6 @@ package-lock.json
 
 # Mac Thumbnails
 ._*
+
+# Local backup files
+server/index.bak
