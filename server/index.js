@@ -10,12 +10,26 @@ if (!process.env.OPENAI_API_KEY) {
 
 const express = require('express');
 const cors = require('cors');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+// Limit request body size to avoid huge payloads
+app.use(express.json({ limit: '12kb' }));
+
+// Basic rate limiter (per IP): 60 requests per minute by default
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: Number(process.env.RATE_LIMIT_MAX || 60),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please slow down.' },
+});
+
+// Apply rate limiter specifically to chat endpoint
+app.use('/chat', chatLimiter);
 
 // Short-term memory for active session (in-memory array)
 // This is intentionally ephemeral and will reset when the server restarts.
@@ -56,12 +70,20 @@ app.post('/chat', async (req, res) => {
 
     // Build messages array from shortTermMemory for the chat API
     // Convert stored entries to { role: 'user'|'assistant' , content }
-    const messages = shortTermMemory.map(e => ({
+    // Cap the number of messages sent to OpenAI to avoid huge contexts
+    const MAX_MEMORY_MESSAGES = Number(process.env.MAX_MEMORY_MESSAGES || 40);
+    const recent = shortTermMemory.slice(-MAX_MEMORY_MESSAGES);
+    const messages = recent.map(e => ({
       role: e.role === 'assistant' ? 'assistant' : 'user',
       content: e.text,
     }));
 
     // Call OpenAI Chat Completions (v1) via fetch - keeps dependencies minimal.
+    // Use AbortController to enforce a timeout for the upstream OpenAI call
+    const controller = new AbortController();
+    const OPENAI_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS || 10000); // 10s default
+    const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+
     const resp = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -69,11 +91,12 @@ app.post('/chat', async (req, res) => {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: 'gpt-3.5-turbo',
+        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
         messages,
-        max_tokens: 800,
-        temperature: 0.7,
+        max_tokens: Number(process.env.OPENAI_MAX_TOKENS || 512),
+        temperature: Number(process.env.OPENAI_TEMPERATURE || 0.7),
       }),
+      signal: controller.signal,
     });
 
     if (!resp.ok) {
@@ -82,22 +105,34 @@ app.post('/chat', async (req, res) => {
       return res.status(502).json({ error: 'OpenAI API error', status: resp.status, detail: errText });
     }
 
-    const data = await resp.json();
+  clearTimeout(timeout);
+  const data = await resp.json();
     // Extract assistant reply
     const assistantMessage = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content
       ? data.choices[0].message.content
       : (data.choices && data.choices[0] && data.choices[0].text) || '';
 
-    // Save assistant reply to memory
+    // Save assistant reply to memory and cap total memory size
     const assistantEntry = { role: 'assistant', text: assistantMessage, timestamp: new Date().toISOString() };
     shortTermMemory.push(assistantEntry);
+    const MAX_TOTAL_MEMORY = Number(process.env.MAX_TOTAL_MEMORY || 200);
+    if (shortTermMemory.length > MAX_TOTAL_MEMORY) {
+      // drop oldest
+      shortTermMemory.splice(0, shortTermMemory.length - MAX_TOTAL_MEMORY);
+    }
 
     return res.json({ status: 'ok', reply: assistantMessage, raw: data });
   } catch (err) {
+    if (err.name === 'AbortError') {
+      console.error('OpenAI request timed out');
+      return res.status(504).json({ error: 'OpenAI request timed out' });
+    }
     console.error('Chat endpoint error:', err);
     return res.status(500).json({ error: 'Internal server error', detail: err.message });
   }
 });
+
+// rate limiter applied above near its declaration
 
 app.get('/memory', (req, res) => {
   return res.json({ memory: shortTermMemory });
