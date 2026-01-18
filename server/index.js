@@ -40,6 +40,11 @@ const shortTermMemory = [];
 // - GET /memory -> returns memory array
 // - DELETE /memory -> clears memory
 
+// Health check endpoint for device testing
+app.get('/ping', (req, res) => {
+  return res.json({ ok: true, timestamp: new Date().toISOString() });
+});
+
 app.post('/message', (req, res) => {
   const { role, text } = req.body || {};
   if (!role || !text) {

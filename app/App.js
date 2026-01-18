@@ -1,8 +1,14 @@
 import React, { useState, useRef } from 'react';
+import Constants from 'expo-constants';
 import { SafeAreaView, View, Text, TextInput, Button, FlatList, StyleSheet, Platform, KeyboardAvoidingView, ActivityIndicator } from 'react-native';
 
 const detectApiUrl = () => {
+  // Prefer explicit config in app.json (expo.extra.apiUrl) when available
+  const configured = Constants?.expoConfig?.extra?.apiUrl;
+  if (configured) return configured;
+
   // iOS simulator can reach localhost, Android emulator needs 10.0.2.2
+  // For physical devices, replace the URL in app.json.extra.apiUrl with your machine LAN IP
   if (Platform.OS === 'android') return 'http://10.0.2.2:3000';
   return 'http://localhost:3000';
 };
