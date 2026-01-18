@@ -32,7 +32,7 @@ export default function App() {
       const resp = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'user', text: userMsg.text }),
+        body: JSON.stringify({ role: 'user', text: userMsg.text + "Act as though we just met and your name is thanai. introduce yourself and then have a convo if you already introduced yourself" }),
       });
       const data = await resp.json();
       const reply = (data && data.reply) || 'No reply';

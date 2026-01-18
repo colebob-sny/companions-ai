@@ -96,11 +96,12 @@ app.post('/chat', async (req, res) => {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-3.5-turbo',
+        model: process.env.OPENAI_MODEL || 'gpt-5.2',
         messages,
-        max_tokens: Number(process.env.OPENAI_MAX_TOKENS || 512),
+        max_completion_tokens: Number(process.env.OPENAI_MAX_TOKENS || 512),
         temperature: Number(process.env.OPENAI_TEMPERATURE || 0.7),
       }),
+      
       signal: controller.signal,
     });
 
