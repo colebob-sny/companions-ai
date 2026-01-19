@@ -11,6 +11,7 @@ if (!process.env.OPENAI_API_KEY) {
 const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
+const db = require('./db');
 
 const app = express();
 
@@ -34,6 +35,77 @@ app.use('/chat', chatLimiter);
 // Short-term memory for active session (in-memory array)
 // This is intentionally ephemeral and will reset when the server restarts.
 const shortTermMemory = [];
+
+// --- API: Personalities and Users (backed by SQLite)
+// List personalities
+app.get('/personalities', (req, res) => {
+  try {
+    const list = db.getPersonalities();
+    return res.json({ personalities: list });
+  } catch (err) {
+    console.error('Error listing personalities', err);
+    return res.status(500).json({ error: 'Failed to list personalities' });
+  }
+});
+
+// Create a personality
+app.post('/personalities', (req, res) => {
+  const { name, emotion, attitude, opinions } = req.body || {};
+  if (!name) return res.status(400).json({ error: 'Missing name' });
+  try {
+    const created = db.createPersonality({ name, emotion, attitude, opinions });
+    return res.status(201).json({ personality: created });
+  } catch (err) {
+    console.error('Error creating personality', err);
+    return res.status(500).json({ error: 'Failed to create personality' });
+  }
+});
+
+// Get a single personality
+app.get('/personalities/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const p = db.getPersonality(id);
+  if (!p) return res.status(404).json({ error: 'Personality not found' });
+  return res.json({ personality: p });
+});
+
+// Create a user
+app.post('/users', (req, res) => {
+  const { username, email, preferred_personality_id, metadata } = req.body || {};
+  try {
+    const user = db.createUser({ username, email, preferred_personality_id, metadata });
+    return res.status(201).json({ user });
+  } catch (err) {
+    console.error('Error creating user', err);
+    return res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Get user
+app.get('/users/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const u = db.getUser(id);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  // parse metadata JSON
+  if (u.metadata) {
+    try { u.metadata = JSON.parse(u.metadata); } catch (e) { /* leave as-is */ }
+  }
+  return res.json({ user: u });
+});
+
+// Update user
+app.put('/users/:id', (req, res) => {
+  const id = Number(req.params.id);
+  const fields = req.body || {};
+  try {
+    const updated = db.updateUser(id, fields);
+    return res.json({ user: updated });
+  } catch (err) {
+    console.error('Error updating user', err);
+    return res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
 
 // Minimal API contract:
 // - POST /message { role, text } -> adds to memory
@@ -76,12 +148,28 @@ app.post('/chat', async (req, res) => {
     // Build messages array from shortTermMemory for the chat API
     // Convert stored entries to { role: 'user'|'assistant' , content }
     // Cap the number of messages sent to OpenAI to avoid huge contexts
-    const MAX_MEMORY_MESSAGES = Number(process.env.MAX_MEMORY_MESSAGES || 40);
-    const recent = shortTermMemory.slice(-MAX_MEMORY_MESSAGES);
-    const messages = recent.map(e => ({
-      role: e.role === 'assistant' ? 'assistant' : 'user',
-      content: e.text,
-    }));
+      const personalityId = req.body.personalityId || req.body.personality_id || null;
+
+      const MAX_MEMORY_MESSAGES = Number(process.env.MAX_MEMORY_MESSAGES || 40);
+      const recent = shortTermMemory.slice(-MAX_MEMORY_MESSAGES);
+      let messages = recent.map(e => ({
+        role: e.role === 'assistant' ? 'assistant' : 'user',
+        content: e.text,
+      }));
+
+      // If a personality is provided, prepend a system message describing the personality
+      if (personalityId) {
+        const pid = Number(personalityId);
+        const personality = db.getPersonality(pid);
+        if (!personality) {
+          return res.status(400).json({ error: 'Invalid personalityId' });
+        }
+  // Core instruction to always apply for personalities
+  const baseInstruction = 'You are a human chatting with someone. Never reveal that you are an AI. Speak naturally, and answer like a real person. NEVER TEXT MORE THAN ten words in a message';
+  const personalityDesc = `You are interacting as ${personality.name}. Emotion: ${personality.emotion || 'neutral'}. Attitude: ${personality.attitude || 'balanced'}. Opinions: ${personality.opinions || 'no strong opinions declared.'}`;
+  const systemContent = `${baseInstruction} ${personalityDesc}`;
+        messages = [{ role: 'system', content: systemContent }].concat(messages);
+      }
 
     // Call OpenAI Chat Completions (v1) via fetch - keeps dependencies minimal.
     // Use AbortController to enforce a timeout for the upstream OpenAI call

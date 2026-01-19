@@ -32,7 +32,7 @@ export default function App() {
       const resp = await fetch(`${API_BASE}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: 'user', text: userMsg.text + "Act as though we just met and your name is thanai. introduce yourself and then have a convo if you already introduced yourself" }),
+        body: JSON.stringify({ role: 'user', text: userMsg.text , personalityId: 2}),
       });
       const data = await resp.json();
       const reply = (data && data.reply) || 'No reply';
@@ -50,19 +50,23 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-        <FlatList
-          ref={flatRef}
-          data={messages}
-          keyExtractor={item => item.id}
-          renderItem={({ item }) => (
-            <View style={[styles.bubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
-              <Text style={styles.bubbleText}>{item.text}</Text>
-            </View>
-          )}
-          contentContainerStyle={styles.chat}
-        />
+        <View style={styles.chatContainer}>
+          <Text style={styles.bgText}>than.ai</Text>
+          <FlatList
+            ref={flatRef}
+            data={messages}
+            keyExtractor={item => item.id}
+            renderItem={({ item }) => (
+              <View style={[styles.bubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>
+                <Text style={styles.bubbleText}>{item.text}</Text>
+              </View>
+            )}
+            contentContainerStyle={styles.chat}
+            style={styles.chatList}
+          />
 
-        {loading ? <ActivityIndicator size="small" style={{ margin: 8 }} /> : null}
+          {loading ? <ActivityIndicator size="small" style={{ margin: 8 }} /> : null}
+        </View>
 
         <View style={styles.inputRow}>
           <TextInput
@@ -82,7 +86,18 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  chatContainer: { flex: 1, position: 'relative' },
+  chatList: { zIndex: 1 },
   chat: { padding: 12 },
+  bgText: {
+    position: 'absolute',
+    top: '40%',
+    alignSelf: 'center',
+    fontSize: 72,
+    color: 'rgba(0,0,0,0.06)',
+    zIndex: 0,
+    fontWeight: '700',
+  },
   bubble: { marginVertical: 6, padding: 10, borderRadius: 8, maxWidth: '85%' },
   userBubble: { backgroundColor: '#DCF8C6', alignSelf: 'flex-end' },
   assistantBubble: { backgroundColor: '#EEE', alignSelf: 'flex-start' },

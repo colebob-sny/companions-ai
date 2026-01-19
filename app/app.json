@@ -10,7 +10,7 @@
     ],
     "sdkVersion": "54.0.0",
     "extra": {
-      "apiUrl": "http://100.118.61.102:3000"
+      "apiUrl": "http://100.84.73.234:3000"
     },
     "android": {
       "package": "com.anonymous.companionsaiapp"
